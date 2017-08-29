@@ -19,9 +19,6 @@ Parameters:
   DevAccount:
     Description: AWS AccountNumber for dev
     Type: Number
-  TestAccount:
-    Description: AWS AccountNumber for test
-    Type: Number
   ProductionAccount:
     Description: AWS AccountNumber for production
     Type: Number
@@ -32,6 +29,15 @@ Parameters:
     Description: Conditionally creates the resources for cross account access
     Type: String
     Default: false
+  EBEnvironment:
+    Description: ElasticBeanstalk 
+    Type: String
+    Default: MyEBS
+  DefaultApplication:
+    Description: app Name
+    Type: String
+    Default: default-app
+
 
 Conditions:
   AddCodeBuildResource: !Equals [ !Ref CrossAccountCondition, true ]
@@ -199,7 +205,6 @@ Resources:
             Resource:
               - !Sub arn:aws:iam::${DevAccount}:role/ToolsAcctCodePipelineCodeCommitRole
               - !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-              - !Sub arn:aws:iam::${TestAccount}:role/ToolsAcctCodePipelineCloudFormationRole
 
       Roles:
         -
@@ -225,6 +230,7 @@ Resources:
                 - Name: SCCheckoutArtifact
               RunOrder: 1
               #RoleArn: !Sub arn:aws:iam::${DevAccount}:role/ToolsAcctCodePipelineCodeCommitRole
+              # probably dont need at all -- filippos
               RoleArn:
                   Fn::If:
                   - AddCodeBuildResource
@@ -248,114 +254,52 @@ Resources:
             OutputArtifacts:
               - Name: BuildOutput
             #REMOVE:RoleArn: arn:aws:iam::485873893626:role/ToolsAcctCodePipelineCodeCommitRole
-        - Name: DeployToTest
+
+
+        -
+          Name: DeployToDevBeanstalk
           Actions:
-            - Name: CreateChangeSetTest
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: CloudFormation
-              Configuration:
-                ChangeSetName: sample-lambda-dev
-                ActionMode: CHANGE_SET_REPLACE
-                StackName: sample-lambda-dev
-                Capabilities: CAPABILITY_NAMED_IAM
-                TemplatePath: BuildOutput::samtemplate.yaml
-                #RoleArn: !Sub arn:aws:iam::${TestAccount}:role/cloudformationdeployer-role
-                RoleArn:
+          -
+            Name: app-deploy
+            ActionTypeId:
+              Category: Deploy
+              Owner: AWS
+              Version: 1
+              Provider: ElasticBeanstalk
+            Configuration:
+              ApplicationName: !Ref DefaultApplication
+              EnvironmentName: !Ref EBEnvironment
+            InputArtifacts:
+                - Name: SourceCode
+            RunOrder: 1
+            RoleArn:
                   Fn::If:
                   - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${TestAccount}:role/cloudformationdeployer-role
+                  - !Sub arn:aws:iam::${DevAccount}:role/ToolsAcctCodePipelineCodeCommitRole
                   - !Ref AWS::NoValue
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
-              #RoleArn: !Sub arn:aws:iam::${TestAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-              RoleArn:
-                  Fn::If:
-                  - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${TestAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-                  - !Ref AWS::NoValue
-            - Name: DeployChangeSetTest
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: CloudFormation
-              Configuration:
-                ChangeSetName: sample-lambda-dev
-                ActionMode: CHANGE_SET_EXECUTE
-                StackName: sample-lambda-dev
-                #RoleArn: !Sub arn:aws:iam::${TestAccount}:role/cloudformationdeployer-role
-                RoleArn:
-                  Fn::If:
-                  - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${TestAccount}:role/cloudformationdeployer-role
-                  - !Ref AWS::NoValue
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 2
-              #RoleArn: !Sub arn:aws:iam::${TestAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-              RoleArn:
-                  Fn::If:
-                  - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${TestAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-                  - !Ref AWS::NoValue
-        - Name: DeployToProduction
+
+        -
+          Name: DeployToProdBeanstalk
           Actions:
-            - Name: CreateChangeSetProd
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: CloudFormation
-              Configuration:
-                ChangeSetName: sample-lambda-test
-                ActionMode: CHANGE_SET_REPLACE
-                StackName: sample-lambda-test
-                Capabilities: CAPABILITY_NAMED_IAM
-                TemplatePath: BuildOutput::samtemplate.yaml
-                #RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
-                RoleArn:
+          -
+            Name: app-deploy
+            ActionTypeId:
+              Category: Deploy
+              Owner: AWS
+              Version: 1
+              Provider: ElasticBeanstalk
+            Configuration:
+              ApplicationName: !Ref DefaultApplication
+              EnvironmentName: !Ref EBEnvironment
+            InputArtifacts:
+                - Name: SourceCode
+            RunOrder: 1
+            RoleArn:
                   Fn::If:
                   - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
+                  - !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCodeCommitRole
                   - !Ref AWS::NoValue
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 1
-              #RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-              RoleArn:
-                  Fn::If:
-                  - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-                  - !Ref AWS::NoValue
-            - Name: DeployChangeSetProd
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: CloudFormation
-              Configuration:
-                ChangeSetName: sample-lambda-test
-                ActionMode: CHANGE_SET_EXECUTE
-                StackName: sample-lambda-test
-                #RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
-                RoleArn:
-                  Fn::If:
-                  - AddCodeBuildResource
-                  - !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
-                  - !Ref AWS::NoValue
-              InputArtifacts:
-                - Name: BuildOutput
-              RunOrder: 2
-              #RoleArn: !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-              RoleArn:
-                Fn::If:
-                - AddCodeBuildResource
-                - !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-                - !Ref AWS::NoValue
+
 
       ArtifactStore:
         Type: S3
@@ -379,8 +323,6 @@ Resources:
             Principal:
               AWS:
                 - !Sub arn:aws:iam::${DevAccount}:role/ToolsAcctCodePipelineCodeCommitRole
-                - !Sub arn:aws:iam::${TestAccount}:role/ToolsAcctCodePipelineCloudFormationRole
-                - !Sub arn:aws:iam::${TestAccount}:role/cloudformationdeployer-role
                 - !Sub arn:aws:iam::${ProductionAccount}:role/ToolsAcctCodePipelineCloudFormationRole
                 - !Sub arn:aws:iam::${ProductionAccount}:role/cloudformationdeployer-role
                 - !GetAtt [BuildProjectRole,Arn]
